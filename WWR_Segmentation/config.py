@@ -29,12 +29,20 @@ class Config:
     predictions_dir: Path = field(default_factory=lambda: Path("outputs/predictions"))
     wwr_output_dir: Path = field(default_factory=lambda: Path("outputs/wwr"))
 
-    # Google Colab / Drive convenience paths
+    # Google Colab / Drive
+    use_colab: bool = False
     use_google_drive: bool = False
+    use_local_data_cache: bool = True
     drive_mount_point: Path = field(default_factory=lambda: Path("/content/drive"))
     drive_project_dir: Path = field(
-        default_factory=lambda: Path("/content/drive/MyDrive/WWR_Segmentation")
+        default_factory=lambda: Path("/content/drive/MyDrive/WWR_Seg_Model")
     )
+    drive_data_zip: Path = field(
+        default_factory=lambda: Path("/content/drive/MyDrive/WWR_Seg_Model/data.zip")
+    )
+    local_data_root: Path = field(default_factory=lambda: Path("/content/data"))
+    models_dir: Path = field(default_factory=lambda: Path("outputs/models"))
+    results_dir: Path = field(default_factory=lambda: Path("outputs"))
 
     # ── Dataset ──────────────────────────────────────────────────────────────
     image_size: Tuple[int, int] = (512, 512)
@@ -119,7 +127,7 @@ class Config:
         self._create_directories()
 
     def _resolve_paths(self) -> None:
-        """Convert string paths and optionally remap to Google Drive."""
+        """Convert string paths and optionally remap to Google Drive / Colab layout."""
         path_fields = (
             "project_root",
             "data_root",
@@ -136,26 +144,38 @@ class Config:
             "wwr_output_dir",
             "drive_mount_point",
             "drive_project_dir",
+            "drive_data_zip",
+            "local_data_root",
+            "models_dir",
+            "results_dir",
         )
         for name in path_fields:
             value = getattr(self, name)
             if not isinstance(value, Path):
                 setattr(self, name, Path(value))
 
-        if self.use_google_drive:
+        if self.use_google_drive or self.use_colab:
             base = self.drive_project_dir
-            self.data_root = base / "data"
+
+            if self.use_local_data_cache:
+                self.data_root = self.local_data_root
+            else:
+                self.data_root = base / "data"
+
             self.train_images_dir = self.data_root / "train" / "images"
             self.train_masks_dir = self.data_root / "train" / "masks"
             self.test_images_dir = self.data_root / "test" / "images"
             self.test_masks_dir = self.data_root / "test" / "masks"
-            self.output_dir = base / "outputs"
-            self.checkpoint_dir = self.output_dir / "checkpoints"
-            self.log_dir = self.output_dir / "logs"
-            self.tensorboard_dir = self.output_dir / "tensorboard"
-            self.backup_dir = self.output_dir / "backup"
-            self.predictions_dir = self.output_dir / "predictions"
-            self.wwr_output_dir = self.output_dir / "wwr"
+
+            self.checkpoint_dir = base / "checkpoints"
+            self.log_dir = base / "logs"
+            self.models_dir = base / "models"
+            self.results_dir = base / "results"
+            self.output_dir = base / "results"
+            self.predictions_dir = base / "results" / "predictions"
+            self.wwr_output_dir = base / "results" / "wwr"
+            self.tensorboard_dir = base / "results" / "tensorboard"
+            self.backup_dir = base / "results" / "backup"
 
     def _create_directories(self) -> None:
         """Ensure all output directories exist."""
@@ -167,13 +187,35 @@ class Config:
             self.backup_dir,
             self.predictions_dir,
             self.wwr_output_dir,
+            self.models_dir,
+            self.results_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
 
     @property
     def best_model_path(self) -> Path:
         """Full path to the best saved model checkpoint."""
+        if self.use_google_drive or self.use_colab:
+            return self.models_dir / self.best_model_filename
         return self.checkpoint_dir / self.best_model_filename
+
+    @classmethod
+    def for_colab(cls, **overrides: object) -> "Config":
+        """Preset for Google Colab: local data, Drive outputs."""
+        defaults: dict = {
+            "use_colab": True,
+            "use_google_drive": True,
+            "use_local_data_cache": True,
+            "drive_project_dir": Path("/content/drive/MyDrive/WWR_Seg_Model"),
+            "drive_data_zip": Path("/content/drive/MyDrive/WWR_Seg_Model/data.zip"),
+            "local_data_root": Path("/content/data"),
+            "batch_size": 8,
+            "mixed_precision": True,
+            "xla_jit": True,
+            "seed": 42,
+        }
+        defaults.update(overrides)
+        return cls(**defaults)
 
     @property
     def mask_lut(self) -> List[int]:

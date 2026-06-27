@@ -115,7 +115,10 @@ def pair_images_with_masks(
 
 
 def mount_google_drive(mount_point: Path = Path("/content/drive")) -> None:
-    """Mount Google Drive in a Colab environment."""
+    """Mount Google Drive in a Colab environment (skip if already mounted)."""
+    if (mount_point / "MyDrive").exists():
+        return
+
     try:
         from google.colab import drive  # type: ignore[import-untyped]
     except ImportError as exc:
@@ -130,7 +133,7 @@ def prepare_environment(config: Config) -> logging.Logger:
     enable_gpu_memory_growth()
     configure_mixed_precision(config.mixed_precision)
 
-    if config.use_google_drive:
+    if config.use_google_drive and not config.use_colab:
         mount_google_drive(config.drive_mount_point)
 
     log_file = config.log_dir / "training.log"
