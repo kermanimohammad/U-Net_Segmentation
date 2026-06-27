@@ -1,126 +1,31 @@
-"""Google Colab setup: project path, Drive mount, local dataset cache, GPU check."""
+"""Google Colab setup: Drive mount, local dataset cache, GPU check."""
 
 from __future__ import annotations
 
 import logging
-import os
 import shutil
-import subprocess
-import sys
 import zipfile
 from pathlib import Path
 from typing import Optional
 
+from WWR_Segmentation.colab_bootstrap import (
+    CODE_ZIP_DRIVE,
+    bootstrap_colab,
+    extract_zip,
+    find_on_drive,
+)
 from WWR_Segmentation.config import Config
 from WWR_Segmentation.utils import mount_google_drive, prepare_environment, setup_logging
 
 logger = logging.getLogger("wwr_segmentation")
 
-REPO_URL = "https://github.com/kermanimohammad/U-Net_Segmentation.git"
-LOCAL_REPO = Path("/content/U-Net_Segmentation")
-
-DRIVE_PROJECT_CANDIDATES = (
-    LOCAL_REPO,
-    Path("/content/drive/MyDrive/WWR_Seg_Model/code"),
-    Path("/content/drive/MyDrive/WWR_Seg_Model/U-Net_Segmentation"),
-    Path("/content/drive/MyDrive/WWR_Seg_Model"),
-    Path.cwd(),
-)
-
-
-def find_project_root() -> Optional[Path]:
-    """Return the first directory that contains the ``WWR_Segmentation`` package."""
-    for candidate in DRIVE_PROJECT_CANDIDATES:
-        if (candidate / "WWR_Segmentation" / "__init__.py").exists():
-            return candidate.resolve()
-    return None
-
-
-def download_from_github_zip(
-    zip_url: str = "https://github.com/kermanimohammad/U-Net_Segmentation/archive/refs/heads/main.zip",
-    target: Path = LOCAL_REPO,
-) -> Path:
-    """Download repository as ZIP when git clone fails in Colab."""
-    import urllib.request
-
-    zip_path = Path("/content/repo_main.zip")
-    logger.info("Downloading project ZIP from GitHub...")
-    urllib.request.urlretrieve(zip_url, zip_path)
-
-    if target.exists():
-        shutil.rmtree(target)
-
-    with zipfile.ZipFile(zip_path, "r") as zf:
-        zf.extractall("/content")
-
-    extracted = Path("/content/U-Net_Segmentation-main")
-    shutil.move(str(extracted), str(target))
-    zip_path.unlink(missing_ok=True)
-    return target
-
 
 def ensure_project_on_path(
-    repo_url: str = REPO_URL,
-    clone_dir: Path = LOCAL_REPO,
-    mount_drive: bool = True,
+    allow_upload: bool = False,
+    use_local_copy: bool = True,
 ) -> Path:
-    """
-    Make ``WWR_Segmentation`` importable in Colab.
-
-    Search order:
-    1. Local clone / Drive folders
-    2. ``code.zip`` on Google Drive
-    3. ``git clone``
-    4. GitHub ZIP download (fallback)
-    """
-    if mount_drive:
-        mount_google_drive(Path("/content/drive"))
-
-    project_root = find_project_root()
-
-    if project_root is None:
-        code_zip = Path("/content/drive/MyDrive/WWR_Seg_Model/code.zip")
-        if code_zip.exists():
-            logger.info("Extracting code.zip from Drive...")
-            if clone_dir.exists():
-                shutil.rmtree(clone_dir)
-            with zipfile.ZipFile(code_zip, "r") as zf:
-                zf.extractall(clone_dir.parent)
-            if (clone_dir / "WWR_Segmentation").exists():
-                project_root = clone_dir
-            else:
-                nested = clone_dir.parent / "U-Net_Segmentation"
-                if nested.exists():
-                    shutil.move(str(nested), str(clone_dir))
-                    project_root = clone_dir
-
-    if project_root is None:
-        if clone_dir.exists():
-            shutil.rmtree(clone_dir)
-        logger.info("Cloning project from %s ...", repo_url)
-        result = subprocess.run(
-            ["git", "clone", "--depth", "1", repo_url, str(clone_dir)],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0:
-            project_root = clone_dir
-        else:
-            logger.warning("git clone failed: %s", result.stderr.strip())
-            project_root = download_from_github_zip(target=clone_dir)
-
-    if not (project_root / "WWR_Segmentation" / "__init__.py").exists():
-        raise FileNotFoundError(
-            f"WWR_Segmentation package not found under {project_root}."
-        )
-
-    os.chdir(project_root)
-    root_str = str(project_root)
-    if root_str not in sys.path:
-        sys.path.insert(0, root_str)
-
-    logger.info("Project root: %s", project_root)
-    return project_root
+    """Delegate to ``bootstrap_colab`` (Drive / code.zip only)."""
+    return bootstrap_colab(allow_upload=allow_upload, use_local_copy=use_local_copy)
 
 
 def verify_gpu(prefer_a100: bool = True) -> str:
@@ -153,7 +58,7 @@ def verify_gpu(prefer_a100: bool = True) -> str:
 
 
 def _find_dataset_root(extract_parent: Path, expected: Path) -> Path:
-    """Locate dataset root after unzip (supports ``data/train/...`` or ``train/...``)."""
+    """Locate dataset root after unzip."""
     if (expected / "train" / "images").exists():
         return expected
     nested = extract_parent / "data"
@@ -210,16 +115,13 @@ def setup_colab(
     prepare_data: bool = True,
     force_unzip: bool = False,
     prefer_a100: bool = True,
-    clone_if_missing: bool = True,
+    load_project: bool = False,
 ) -> Config:
-    """
-    Full Colab setup: project path → Drive → unzip data → TensorFlow → GPU check.
-    """
+    """Full Colab setup: optional project load → unzip data → TensorFlow → GPU."""
     setup_logging()
 
-    if clone_if_missing:
-        ensure_project_on_path(mount_drive=mount_drive)
-        mount_drive = False  # already mounted
+    if load_project:
+        bootstrap_colab(allow_upload=False)
 
     if config is None:
         config = Config.for_colab()
