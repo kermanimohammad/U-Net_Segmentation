@@ -36,6 +36,29 @@ def find_project_root() -> Optional[Path]:
     return None
 
 
+def download_from_github_zip(
+    zip_url: str = "https://github.com/kermanimohammad/U-Net_Segmentation/archive/refs/heads/main.zip",
+    target: Path = LOCAL_REPO,
+) -> Path:
+    """Download repository as ZIP when git clone fails in Colab."""
+    import urllib.request
+
+    zip_path = Path("/content/repo_main.zip")
+    logger.info("Downloading project ZIP from GitHub...")
+    urllib.request.urlretrieve(zip_url, zip_path)
+
+    if target.exists():
+        shutil.rmtree(target)
+
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        zf.extractall("/content")
+
+    extracted = Path("/content/U-Net_Segmentation-main")
+    shutil.move(str(extracted), str(target))
+    zip_path.unlink(missing_ok=True)
+    return target
+
+
 def ensure_project_on_path(
     repo_url: str = REPO_URL,
     clone_dir: Path = LOCAL_REPO,
@@ -45,13 +68,10 @@ def ensure_project_on_path(
     Make ``WWR_Segmentation`` importable in Colab.
 
     Search order:
-    1. ``/content/U-Net_Segmentation`` (previous clone)
-    2. Google Drive folders under ``WWR_Seg_Model``
-    3. Current working directory
-    4. ``git clone`` from GitHub
-
-    Returns:
-        Absolute path to the project root.
+    1. Local clone / Drive folders
+    2. ``code.zip`` on Google Drive
+    3. ``git clone``
+    4. GitHub ZIP download (fallback)
     """
     if mount_drive:
         mount_google_drive(Path("/content/drive"))
@@ -59,19 +79,39 @@ def ensure_project_on_path(
     project_root = find_project_root()
 
     if project_root is None:
+        code_zip = Path("/content/drive/MyDrive/WWR_Seg_Model/code.zip")
+        if code_zip.exists():
+            logger.info("Extracting code.zip from Drive...")
+            if clone_dir.exists():
+                shutil.rmtree(clone_dir)
+            with zipfile.ZipFile(code_zip, "r") as zf:
+                zf.extractall(clone_dir.parent)
+            if (clone_dir / "WWR_Segmentation").exists():
+                project_root = clone_dir
+            else:
+                nested = clone_dir.parent / "U-Net_Segmentation"
+                if nested.exists():
+                    shutil.move(str(nested), str(clone_dir))
+                    project_root = clone_dir
+
+    if project_root is None:
         if clone_dir.exists():
             shutil.rmtree(clone_dir)
         logger.info("Cloning project from %s ...", repo_url)
-        subprocess.run(
+        result = subprocess.run(
             ["git", "clone", "--depth", "1", repo_url, str(clone_dir)],
-            check=True,
+            capture_output=True,
+            text=True,
         )
-        project_root = clone_dir
+        if result.returncode == 0:
+            project_root = clone_dir
+        else:
+            logger.warning("git clone failed: %s", result.stderr.strip())
+            project_root = download_from_github_zip(target=clone_dir)
 
     if not (project_root / "WWR_Segmentation" / "__init__.py").exists():
         raise FileNotFoundError(
-            f"WWR_Segmentation package not found under {project_root}. "
-            "Upload the project to Drive (My Drive/WWR_Seg_Model/) or push to GitHub."
+            f"WWR_Segmentation package not found under {project_root}."
         )
 
     os.chdir(project_root)
