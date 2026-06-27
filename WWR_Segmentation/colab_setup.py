@@ -98,11 +98,13 @@ def prepare_local_dataset(config: Config, force: bool = False) -> Path:
     attach_test_from_drive(local_root, Path(config.drive_project_dir))
 
     marker.write_text("ready\n", encoding="utf-8")
+    train_n = len(list((local_root / "train" / "images").glob("*")))
+    test_n = len(list((local_root / "test" / "images").glob("*"))) if (local_root / "test" / "images").exists() else 0
     logger.info(
-        "Dataset ready at %s — train: %d images, test: %d images",
+        "Dataset ready at %s — train: %d images, test: %d (test optional)",
         local_root,
-        len(list((local_root / "train" / "images").glob("*"))),
-        len(list((local_root / "test" / "images").glob("*"))) if (local_root / "test" / "images").exists() else 0,
+        train_n,
+        test_n,
     )
     return local_root
 

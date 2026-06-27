@@ -13,6 +13,7 @@ import tensorflow as tf
 from tensorflow import keras
 
 from WWR_Segmentation.config import Config
+from WWR_Segmentation.dataset import has_test_set
 from WWR_Segmentation.utils import list_image_files
 
 logger = logging.getLogger("wwr_segmentation")
@@ -180,6 +181,12 @@ def run_wwr_analysis(
     images_dir: Optional[Union[str, Path]] = None,
 ) -> pd.DataFrame:
     """Load model and run WWR analysis on a directory of images."""
+    if images_dir is None and not has_test_set(config):
+        raise FileNotFoundError(
+            "No test images available for WWR analysis. "
+            "Upload the test set to Drive when ready, or pass images_dir explicitly."
+        )
+
     path = model_path or str(config.best_model_path)
     model = keras.models.load_model(path, compile=False)
 

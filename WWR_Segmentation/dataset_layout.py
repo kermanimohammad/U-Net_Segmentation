@@ -109,10 +109,9 @@ def find_flat_layout(search_root: Path) -> Optional[Dict[str, Path]]:
 
         test_images, test_masks = _find_test_folders(search_root)
         logger.info(
-            "Flat layout at %s — train: %d images, test: %s",
+            "Flat layout at %s — %d train images (test set: optional, add later)",
             base,
             _count_images(images_dir),
-            _count_images(test_images) if test_images else "not in zip",
         )
         return {
             "train_images": images_dir,
@@ -162,10 +161,9 @@ def attach_test_from_drive(target: Path, drive_base: Path) -> None:
             shutil.rmtree(tmp, ignore_errors=True)
 
     if test_images is None:
-        logger.warning(
-            "Test set not found on Drive (%s/test_images). "
-            "Upload test_images/ folder or test.zip for evaluation.",
-            drive_base,
+        logger.info(
+            "Independent test set not loaded (optional). "
+            "Training uses 90/10 train/val split from data.zip only."
         )
         return
 

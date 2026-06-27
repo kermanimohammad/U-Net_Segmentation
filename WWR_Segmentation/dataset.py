@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Dict, List, Tuple
 
 import numpy as np
 import tensorflow as tf
@@ -71,6 +72,16 @@ def _load_sample(
     return image, mask
 
 
+def has_test_set(config: Config) -> bool:
+    """True if the independent test split exists and contains paired images/masks."""
+    img_dir = Path(config.test_images_dir)
+    msk_dir = Path(config.test_masks_dir)
+    if not img_dir.exists() or not msk_dir.exists():
+        return False
+    images = list_image_files(img_dir, config.image_extensions, required=False)
+    return len(images) > 0
+
+
 def build_file_pairs(config: Config, split: str = "train") -> List[Tuple[str, str]]:
     """
     Build (image, mask) path pairs for the requested split.
@@ -80,6 +91,8 @@ def build_file_pairs(config: Config, split: str = "train") -> List[Tuple[str, st
         split: One of ``'train'``, ``'val'``, ``'test'``.
     """
     if split == "test":
+        if not has_test_set(config):
+            return []
         image_paths = list_image_files(config.test_images_dir, config.image_extensions)
         return pair_images_with_masks(image_paths, config.test_masks_dir, config.image_extensions)
 
@@ -152,16 +165,22 @@ def get_val_dataset(config: Config, one_hot: bool = True) -> tf.data.Dataset:
 def get_test_dataset(config: Config, one_hot: bool = True) -> tf.data.Dataset:
     """Return the independent test tf.data pipeline (never used during training)."""
     pairs = build_file_pairs(config, split="test")
+    if not pairs:
+        raise FileNotFoundError(
+            "Independent test set not available. "
+            "Upload test data to Drive when ready, then re-run setup with force_unzip=True."
+        )
     return _make_dataset_from_pairs(pairs, config, training=False, one_hot=one_hot)
 
 
 def get_dataset_info(config: Config) -> Dict[str, int]:
     """Return sample counts for each split."""
-    return {
+    info = {
         "train": len(build_file_pairs(config, "train")),
         "val": len(build_file_pairs(config, "val")),
-        "test": len(build_file_pairs(config, "test")),
+        "test": len(build_file_pairs(config, "test")) if has_test_set(config) else 0,
     }
+    return info
 
 
 def get_cv_fold_pairs(

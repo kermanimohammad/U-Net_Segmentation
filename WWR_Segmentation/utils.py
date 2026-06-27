@@ -69,10 +69,16 @@ def configure_mixed_precision(enabled: bool = True) -> None:
         tf.keras.mixed_precision.set_global_policy(policy)
 
 
-def list_image_files(directory: Path, extensions: Tuple[str, ...]) -> List[Path]:
+def list_image_files(
+    directory: Path,
+    extensions: Tuple[str, ...],
+    required: bool = True,
+) -> List[Path]:
     """Return sorted list of image file paths in *directory*."""
     if not directory.exists():
-        raise FileNotFoundError(f"Directory not found: {directory}")
+        if required:
+            raise FileNotFoundError(f"Directory not found: {directory}")
+        return []
 
     files: List[Path] = []
     for ext in extensions:
@@ -80,7 +86,7 @@ def list_image_files(directory: Path, extensions: Tuple[str, ...]) -> List[Path]
         files.extend(directory.glob(f"*{ext.upper()}"))
 
     files = sorted(set(files))
-    if not files:
+    if not files and required:
         raise FileNotFoundError(f"No images found in {directory}")
     return files
 

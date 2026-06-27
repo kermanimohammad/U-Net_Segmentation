@@ -14,7 +14,7 @@ from sklearn.metrics import confusion_matrix as sk_confusion_matrix
 from tensorflow import keras
 
 from WWR_Segmentation.config import Config
-from WWR_Segmentation.dataset import get_test_dataset, get_val_dataset
+from WWR_Segmentation.dataset import get_test_dataset, get_val_dataset, has_test_set
 from WWR_Segmentation.metrics import compute_per_class_metrics_from_cm
 from WWR_Segmentation.utils import prepare_environment
 
@@ -91,11 +91,19 @@ def evaluate_all(
     model: keras.Model,
     config: Config,
 ) -> Dict[str, Dict]:
-    """Evaluate on both validation and independent test sets."""
-    results = {
+    """Evaluate on validation and, when available, the independent test set."""
+    results: Dict[str, Dict] = {
         "validation": evaluate_split(model, config, split="val"),
-        "test": evaluate_split(model, config, split="test"),
     }
+
+    if has_test_set(config):
+        results["test"] = evaluate_split(model, config, split="test")
+    else:
+        logger.info(
+            "Independent test set not available — skipping test evaluation. "
+            "Upload test data later and re-run evaluation."
+        )
+
     summary_path = config.output_dir / "evaluation_summary.json"
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(
