@@ -14,7 +14,7 @@ from WWR_Segmentation.utils import mount_google_drive, prepare_environment, setu
 
 logger = logging.getLogger("wwr_segmentation")
 
-CODE_VERSION = "2026.06.27.3"
+CODE_VERSION = "2026.06.27.4"
 
 
 def verify_gpu(prefer_a100: bool = True) -> str:
@@ -136,7 +136,17 @@ def setup_colab(
 
     if mount_drive:
         mount_google_drive(config.drive_mount_point)
-        config._create_directories()
+
+    if config.use_onedrive:
+        from WWR_Segmentation.colab_onedrive import mount_onedrive
+
+        mount_onedrive(
+            mount_point=config.onedrive_mount_point,
+            remote=config.rclone_remote_name,
+            config_path=config.rclone_config_path,
+        )
+
+    config._create_directories()
 
     if prepare_data and config.use_local_data_cache:
         prepare_local_dataset(config, force=force_unzip)

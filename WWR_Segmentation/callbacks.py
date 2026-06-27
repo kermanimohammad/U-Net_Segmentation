@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import List
 
-import tensorflow as tf
 from tensorflow import keras
 
 from WWR_Segmentation.config import Config
@@ -29,27 +27,18 @@ def get_callbacks(config: Config, run_name: str = "training") -> List[keras.call
     """
     Build the full callback list for training.
 
-    Includes ModelCheckpoint, EarlyStopping, CSVLogger, TensorBoard,
-    BackupAndRestore, and LearningRateLogger.
+    Saves **one** best model file (overwrites) — not a new ~630 MB file per epoch.
     """
-    checkpoint_path = config.checkpoint_dir / f"{run_name}_{{epoch:03d}}_{{val_mean_iou:.4f}}.keras"
     best_model_path = config.best_model_path
 
     callbacks: List[keras.callbacks.Callback] = [
-        keras.callbacks.ModelCheckpoint(
-            filepath=str(checkpoint_path),
-            monitor=config.checkpoint_monitor,
-            mode=config.checkpoint_mode,
-            save_best_only=True,
-            save_weights_only=False,
-            verbose=1,
-        ),
         keras.callbacks.ModelCheckpoint(
             filepath=str(best_model_path),
             monitor=config.checkpoint_monitor,
             mode=config.checkpoint_mode,
             save_best_only=True,
-            verbose=0,
+            save_weights_only=False,
+            verbose=1,
         ),
         keras.callbacks.EarlyStopping(
             monitor=config.checkpoint_monitor,
@@ -69,10 +58,15 @@ def get_callbacks(config: Config, run_name: str = "training") -> List[keras.call
             write_graph=True,
             update_freq="epoch",
         ),
-        keras.callbacks.BackupAndRestore(
-            backup_dir=str(config.backup_dir / run_name),
-        ),
         LearningRateLogger(),
     ]
+
+    if config.enable_training_backup:
+        callbacks.insert(
+            -1,
+            keras.callbacks.BackupAndRestore(
+                backup_dir=str(config.backup_dir / run_name),
+            ),
+        )
 
     return callbacks

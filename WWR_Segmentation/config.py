@@ -113,6 +113,16 @@ class Config:
     early_stopping_patience: int = 15
     checkpoint_monitor: str = "val_mean_iou"
     checkpoint_mode: str = "max"
+    enable_training_backup: bool = False  # BackupAndRestore uses extra disk space
+
+    # OneDrive (Colab via rclone) — 1 TB+ storage for model outputs
+    use_onedrive: bool = False
+    onedrive_mount_point: Path = field(default_factory=lambda: Path("/content/onedrive"))
+    onedrive_project_dir: Path = field(
+        default_factory=lambda: Path("/content/onedrive/WWR_Seg_Model")
+    )
+    rclone_config_path: Path = field(default_factory=lambda: Path("/content/rclone.conf"))
+    rclone_remote_name: str = "onedrive"
 
     # ── Cross-validation ─────────────────────────────────────────────────────
     enable_cross_validation: bool = False
@@ -148,6 +158,9 @@ class Config:
             "local_data_root",
             "models_dir",
             "results_dir",
+            "onedrive_mount_point",
+            "onedrive_project_dir",
+            "rclone_config_path",
         )
         for name in path_fields:
             value = getattr(self, name)
@@ -155,7 +168,11 @@ class Config:
                 setattr(self, name, Path(value))
 
         if self.use_google_drive or self.use_colab:
-            base = self.drive_project_dir
+            # Outputs → OneDrive (1 TB) if enabled, else Google Drive
+            if self.use_onedrive:
+                base = self.onedrive_project_dir
+            else:
+                base = self.drive_project_dir
 
             if self.use_local_data_cache:
                 self.data_root = self.local_data_root
