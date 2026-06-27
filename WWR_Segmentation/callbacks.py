@@ -7,6 +7,7 @@ from typing import List
 from tensorflow import keras
 
 from WWR_Segmentation.config import Config
+from WWR_Segmentation.visualization import EpochVisualizationCallback
 
 
 class LearningRateLogger(keras.callbacks.Callback):
@@ -68,5 +69,8 @@ def get_callbacks(config: Config, run_name: str = "training") -> List[keras.call
                 backup_dir=str(config.backup_dir / run_name),
             ),
         )
+
+    if config.enable_epoch_visualization:
+        callbacks.append(EpochVisualizationCallback(config, run_name=run_name))
 
     return callbacks

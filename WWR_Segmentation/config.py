@@ -115,6 +115,12 @@ class Config:
     checkpoint_mode: str = "max"
     enable_training_backup: bool = False  # BackupAndRestore uses extra disk space
 
+    # Per-epoch visualization (Input | GT | Prediction)
+    enable_epoch_visualization: bool = True
+    viz_num_samples: int = 2
+    viz_every_n_epochs: int = 1
+    viz_show_in_notebook: bool = True
+
     # OneDrive (Colab via rclone) — 1 TB+ storage for model outputs
     use_onedrive: bool = False
     onedrive_mount_point: Path = field(default_factory=lambda: Path("/content/onedrive"))
