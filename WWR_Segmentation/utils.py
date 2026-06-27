@@ -95,14 +95,25 @@ def pair_images_with_masks(
     for img_path in image_paths:
         stem = img_path.stem
         mask_path: Optional[Path] = None
-        for ext in extensions:
-            candidate = mask_dir / f"{stem}{ext}"
-            if candidate.exists():
-                mask_path = candidate
-                break
-            candidate = mask_dir / f"{stem}{ext.upper()}"
-            if candidate.exists():
-                mask_path = candidate
+
+        # Build candidate mask stems (handles *_texture.png ↔ *_mask.png)
+        stem_variants = [stem]
+        if stem.endswith("_texture"):
+            stem_variants.append(stem.replace("_texture", "_mask"))
+            stem_variants.append(stem[: -len("_texture")] + "_mask")
+
+        for mask_stem in stem_variants:
+            for ext in extensions:
+                for candidate in (
+                    mask_dir / f"{mask_stem}{ext}",
+                    mask_dir / f"{mask_stem}{ext.upper()}",
+                ):
+                    if candidate.exists():
+                        mask_path = candidate
+                        break
+                if mask_path is not None:
+                    break
+            if mask_path is not None:
                 break
 
         if mask_path is None:

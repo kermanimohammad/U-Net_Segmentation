@@ -8,13 +8,8 @@ import zipfile
 from pathlib import Path
 from typing import Optional
 
-from WWR_Segmentation.colab_bootstrap import (
-    CODE_ZIP_DRIVE,
-    bootstrap_colab,
-    extract_zip,
-    find_on_drive,
-)
 from WWR_Segmentation.config import Config
+from WWR_Segmentation.dataset_layout import attach_test_from_drive, prepare_dataset_root
 from WWR_Segmentation.utils import mount_google_drive, prepare_environment, setup_logging
 
 logger = logging.getLogger("wwr_segmentation")
@@ -57,18 +52,14 @@ def verify_gpu(prefer_a100: bool = True) -> str:
     return gpus[0].name
 
 
-def _find_dataset_root(extract_parent: Path, expected: Path) -> Path:
-    """Locate dataset root after unzip."""
-    if (expected / "train" / "images").exists():
-        return expected
-    nested = extract_parent / "data"
-    if (nested / "train" / "images").exists():
-        return nested
-    if (extract_parent / "train" / "images").exists():
-        return extract_parent
-    raise FileNotFoundError(
-        f"train/images not found after unzip. Expected under {expected} or {nested}."
-    )
+def ensure_project_on_path(
+    allow_upload: bool = False,
+    use_local_copy: bool = True,
+) -> Path:
+    """Delegate to ``bootstrap_colab`` (Drive / code.zip only)."""
+    from WWR_Segmentation.colab_bootstrap import bootstrap_colab
+
+    return bootstrap_colab(allow_upload=allow_upload, use_local_copy=use_local_copy)
 
 
 def prepare_local_dataset(config: Config, force: bool = False) -> Path:
@@ -77,7 +68,7 @@ def prepare_local_dataset(config: Config, force: bool = False) -> Path:
     marker = local_root / ".dataset_ready"
     zip_on_drive = Path(config.drive_data_zip)
 
-    if marker.exists() and not force:
+    if marker.exists() and not force and (local_root / "train" / "images").exists():
         logger.info("Dataset already prepared at %s", local_root)
         return local_root
 
@@ -91,21 +82,28 @@ def prepare_local_dataset(config: Config, force: bool = False) -> Path:
     logger.info("Copying data.zip to local storage...")
     shutil.copy2(zip_on_drive, local_zip)
 
-    if force and local_root.exists():
-        shutil.rmtree(local_root)
+    extract_dir = Path("/content/_data_extract")
+    if extract_dir.exists():
+        shutil.rmtree(extract_dir)
+    extract_dir.mkdir()
 
-    logger.info("Extracting to %s ...", local_root.parent)
+    logger.info("Extracting archive...")
     with zipfile.ZipFile(local_zip, "r") as zf:
-        zf.extractall(local_root.parent)
+        zf.extractall(extract_dir)
 
-    dataset_root = _find_dataset_root(local_root.parent, local_root)
-    if dataset_root != local_root:
-        if local_root.exists():
-            shutil.rmtree(local_root)
-        shutil.move(str(dataset_root), str(local_root))
+    prepare_dataset_root(extract_dir, local_root)
+    shutil.rmtree(extract_dir, ignore_errors=True)
+
+    # Test set is separate from data.zip — link from Drive if available
+    attach_test_from_drive(local_root, Path(config.drive_project_dir))
 
     marker.write_text("ready\n", encoding="utf-8")
-    logger.info("Dataset ready at %s", local_root)
+    logger.info(
+        "Dataset ready at %s — train: %d images, test: %d images",
+        local_root,
+        len(list((local_root / "train" / "images").glob("*"))),
+        len(list((local_root / "test" / "images").glob("*"))) if (local_root / "test" / "images").exists() else 0,
+    )
     return local_root
 
 
@@ -121,6 +119,8 @@ def setup_colab(
     setup_logging()
 
     if load_project:
+        from WWR_Segmentation.colab_bootstrap import bootstrap_colab
+
         bootstrap_colab(allow_upload=False)
 
     if config is None:
