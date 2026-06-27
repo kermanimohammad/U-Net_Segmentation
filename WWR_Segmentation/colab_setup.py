@@ -14,13 +14,7 @@ from WWR_Segmentation.utils import mount_google_drive, prepare_environment, setu
 
 logger = logging.getLogger("wwr_segmentation")
 
-
-def ensure_project_on_path(
-    allow_upload: bool = False,
-    use_local_copy: bool = True,
-) -> Path:
-    """Delegate to ``bootstrap_colab`` (Drive / code.zip only)."""
-    return bootstrap_colab(allow_upload=allow_upload, use_local_copy=use_local_copy)
+CODE_VERSION = "2026.06.27.2"
 
 
 def verify_gpu(prefer_a100: bool = True) -> str:
@@ -68,6 +62,10 @@ def prepare_local_dataset(config: Config, force: bool = False) -> Path:
     marker = local_root / ".dataset_ready"
     zip_on_drive = Path(config.drive_data_zip)
 
+    if force and local_root.exists():
+        shutil.rmtree(local_root, ignore_errors=True)
+        marker.unlink(missing_ok=True)
+
     if marker.exists() and not force and (local_root / "train" / "images").exists():
         logger.info("Dataset already prepared at %s", local_root)
         return local_root
@@ -87,19 +85,20 @@ def prepare_local_dataset(config: Config, force: bool = False) -> Path:
         shutil.rmtree(extract_dir)
     extract_dir.mkdir()
 
-    logger.info("Extracting archive...")
+    logger.info("Extracting archive to %s ...", extract_dir)
     with zipfile.ZipFile(local_zip, "r") as zf:
         zf.extractall(extract_dir)
 
-    prepare_dataset_root(extract_dir, local_root)
+    prepare_dataset_root(extract_dir, local_root, materialize=True)
     shutil.rmtree(extract_dir, ignore_errors=True)
 
-    # Test set is separate from data.zip — link from Drive if available
     attach_test_from_drive(local_root, Path(config.drive_project_dir))
 
     marker.write_text("ready\n", encoding="utf-8")
-    train_n = len(list((local_root / "train" / "images").glob("*")))
-    test_n = len(list((local_root / "test" / "images").glob("*"))) if (local_root / "test" / "images").exists() else 0
+    from WWR_Segmentation.dataset_layout import _count_images
+
+    train_n = _count_images(local_root / "train" / "images")
+    test_n = _count_images(local_root / "test" / "images") if (local_root / "test" / "images").exists() else 0
     logger.info(
         "Dataset ready at %s — train: %d images, test: %d (test optional)",
         local_root,
@@ -119,11 +118,18 @@ def setup_colab(
 ) -> Config:
     """Full Colab setup: optional project load → unzip data → TensorFlow → GPU."""
     setup_logging()
+    logger.info("WWR Segmentation code version: %s", CODE_VERSION)
+
+    try:
+        from WWR_Segmentation import dataset_layout  # noqa: F401
+    except ImportError as exc:
+        raise ImportError(
+            "Old code.zip detected (missing dataset_layout.py). "
+            "Re-upload code.zip from your PC: python scripts/pack_for_colab.py"
+        ) from exc
 
     if load_project:
-        from WWR_Segmentation.colab_bootstrap import bootstrap_colab
-
-        bootstrap_colab(allow_upload=False)
+        ensure_project_on_path(allow_upload=False)
 
     if config is None:
         config = Config.for_colab()

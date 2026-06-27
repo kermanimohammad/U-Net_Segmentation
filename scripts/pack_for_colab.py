@@ -40,6 +40,15 @@ def main() -> None:
     shutil.make_archive(str(OUTPUT.with_suffix("")), "zip", staging)
     shutil.rmtree(staging)
 
+    # Re-pack without __pycache__ if any slipped in
+    import zipfile
+    clean = OUTPUT.with_suffix(".clean.zip")
+    with zipfile.ZipFile(OUTPUT, "r") as zin, zipfile.ZipFile(clean, "w") as zout:
+        for item in zin.infolist():
+            if "__pycache__" not in item.filename:
+                zout.writestr(item, zin.read(item.filename))
+    clean.replace(OUTPUT)
+
     size_mb = OUTPUT.stat().st_size / 1e6
     print(f"Created: {OUTPUT}")
     print(f"Size:    {size_mb:.1f} MB")

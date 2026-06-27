@@ -29,6 +29,20 @@ def _first_existing(base: Path, relative_paths: Tuple[str, ...]) -> Optional[Pat
     return None
 
 
+def _materialize_dir(src: Path, dst: Path, move: bool = False) -> None:
+    """Copy or move *src* directory tree to *dst* (real files, not symlinks)."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.exists() or dst.is_symlink():
+        if dst.is_symlink() or dst.is_file():
+            dst.unlink()
+        else:
+            shutil.rmtree(dst)
+    if move:
+        shutil.move(str(src), str(dst))
+    else:
+        shutil.copytree(src, dst)
+
+
 def _link_or_copy(src: Path, dst: Path) -> None:
     """Symlink *src* to *dst* (fast); fall back to directory junction/copy."""
     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -82,6 +96,16 @@ def _find_test_folders(search_root: Path) -> Tuple[Optional[Path], Optional[Path
     return test_images, test_masks
 
 
+def _find_folder(parent: Path, name: str) -> Optional[Path]:
+    """Find a child folder by name (case-insensitive on Linux)."""
+    if not parent.exists():
+        return None
+    for child in parent.iterdir():
+        if child.is_dir() and child.name.lower() == name.lower():
+            return child
+    return None
+
+
 def find_flat_layout(search_root: Path) -> Optional[Dict[str, Path]]:
     """
     Detect flat ``images/`` + ``masks/`` layout (user's data.zip structure).
@@ -90,27 +114,31 @@ def find_flat_layout(search_root: Path) -> Optional[Dict[str, Path]]:
         data.zip
         ├── images/   (*_texture.png)
         └── masks/    (*_mask.png)
+
+    Also supports ``data/images/``, nested paths, and case variants (Images/Masks).
     """
-    bases = [search_root]
+    candidates: List[Path] = [search_root]
     nested = search_root / "data"
     if nested.exists():
-        bases.append(nested)
+        candidates.append(nested)
 
-    for base in bases:
-        images_dir = base / "images"
-        masks_dir = base / "masks"
-        if not images_dir.is_dir() or not masks_dir.is_dir():
+    # Any images/ folder with sibling masks/ anywhere under extract root
+    for images_dir in search_root.rglob("*"):
+        if not images_dir.is_dir() or images_dir.name.lower() != "images":
+            continue
+        if images_dir.parent.name.lower() in ("train", "test"):
+            continue
+
+        masks_dir = _find_folder(images_dir.parent, "masks")
+        if masks_dir is None:
             continue
         if _count_images(images_dir) == 0:
-            continue
-        # Skip if already part of train/test standard tree
-        if base.name in ("train", "test"):
             continue
 
         test_images, test_masks = _find_test_folders(search_root)
         logger.info(
             "Flat layout at %s — %d train images (test set: optional, add later)",
-            base,
+            images_dir.parent,
             _count_images(images_dir),
         )
         return {
@@ -119,6 +147,24 @@ def find_flat_layout(search_root: Path) -> Optional[Dict[str, Path]]:
             "test_images": test_images,
             "test_masks": test_masks,
         }
+
+    # Direct children of known bases (fast path)
+    for base in candidates:
+        images_dir = _find_folder(base, "images")
+        masks_dir = _find_folder(base, "masks")
+        if images_dir and masks_dir and _count_images(images_dir) > 0:
+            test_images, test_masks = _find_test_folders(search_root)
+            logger.info(
+                "Flat layout at %s — %d train images",
+                base,
+                _count_images(images_dir),
+            )
+            return {
+                "train_images": images_dir,
+                "train_masks": masks_dir,
+                "test_images": test_images,
+                "test_masks": test_masks,
+            }
 
     return None
 
@@ -167,11 +213,11 @@ def attach_test_from_drive(target: Path, drive_base: Path) -> None:
         )
         return
 
-    _link_or_copy(test_images, target / "test" / "images")
+    _materialize_dir(test_images, target / "test" / "images", move=False)
     if test_masks:
-        _link_or_copy(test_masks, target / "test" / "masks")
+        _materialize_dir(test_masks, target / "test" / "masks", move=False)
     logger.info(
-        "Test set linked from Drive — %d images",
+        "Test set copied from Drive — %d images",
         _count_images(target / "test" / "images"),
     )
 
@@ -228,11 +274,16 @@ def find_legacy_layout(search_root: Path) -> Optional[Dict[str, Path]]:
     return None
 
 
-def normalize_to_standard(source: Dict[str, Path], target: Path) -> Path:
+def normalize_to_standard(
+    source: Dict[str, Path],
+    target: Path,
+    materialize: bool = False,
+) -> Path:
     """
-    Map legacy folders to the standard layout at *target*:
+    Map source folders to the standard layout at *target*.
 
-    ``train/images``, ``train/masks``, ``test/images``, ``test/masks``
+    When *materialize* is True, files are moved/copied (not symlinked).
+    Use this before deleting a temporary extract directory.
     """
     if target.exists():
         shutil.rmtree(target)
@@ -253,13 +304,21 @@ def normalize_to_standard(source: Dict[str, Path], target: Path) -> Path:
 
     for rel, src in mapping.items():
         dst = target / rel
-        logger.info("Linking %s → %s", src, dst)
-        _link_or_copy(src, dst)
+        if materialize:
+            logger.info("Moving %s → %s", src, dst)
+            _materialize_dir(src, dst, move=True)
+        else:
+            logger.info("Linking %s → %s", src, dst)
+            _link_or_copy(src, dst)
 
     return target
 
 
-def prepare_dataset_root(extract_parent: Path, target: Path) -> Path:
+def prepare_dataset_root(
+    extract_parent: Path,
+    target: Path,
+    materialize: bool = False,
+) -> Path:
     """
     Locate or normalize extracted data into *target* (``/content/data``).
 
@@ -286,7 +345,7 @@ def prepare_dataset_root(extract_parent: Path, target: Path) -> Path:
 
     flat = find_flat_layout(extract_parent)
     if flat is not None:
-        normalize_to_standard(flat, target)
+        normalize_to_standard(flat, target, materialize=materialize)
         logger.info(
             "Normalized flat layout → %s — train: %d, test: %d",
             target,
@@ -297,7 +356,7 @@ def prepare_dataset_root(extract_parent: Path, target: Path) -> Path:
 
     legacy = find_legacy_layout(extract_parent)
     if legacy is not None:
-        normalize_to_standard(legacy, target)
+        normalize_to_standard(legacy, target, materialize=materialize)
         logger.info(
             "Normalized legacy layout → %s — train: %d, test: %d",
             target,
@@ -309,16 +368,15 @@ def prepare_dataset_root(extract_parent: Path, target: Path) -> Path:
     # List top-level contents to help debugging
     contents: List[str] = []
     for p in sorted(extract_parent.rglob("*")):
-        if p.is_dir() and p.parent == extract_parent or (p.parent.name == "data" and p.parent.parent == extract_parent):
-            contents.append(str(p.relative_to(extract_parent)))
+        if p.is_dir() and p.parent == extract_parent:
+            n = _count_images(p) if p.name.lower() in ("images", "masks", "png_images") else 0
+            contents.append(f"{p.name}/" + (f" ({n} files)" if n else ""))
     hint = "\n  ".join(contents[:20]) if contents else "(empty)"
 
     raise FileNotFoundError(
         f"Could not find dataset under {extract_parent}.\n"
-        f"Expected either:\n"
-        f"  data/train/images/  +  data/test/images/\n"
-        f"  OR flat: images/  masks/  (train data)\n"
-        f"  OR legacy: png_images/  png_masks/\n\n"
-        f"Top-level folders found:\n  {hint}\n\n"
-        f"Re-pack data.zip with the correct folder structure."
+        f"Expected data.zip to contain:\n"
+        f"  images/  +  masks/   (your current layout)\n\n"
+        f"Folders found after unzip:\n  {hint}\n\n"
+        f"If you see this error, re-upload the latest code.zip from your PC."
     )
