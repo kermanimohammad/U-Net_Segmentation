@@ -14,7 +14,7 @@ from WWR_Segmentation.utils import mount_google_drive, prepare_environment, setu
 
 logger = logging.getLogger("wwr_segmentation")
 
-CODE_VERSION = "2026.06.27.2"
+CODE_VERSION = "2026.06.27.3"
 
 
 def verify_gpu(prefer_a100: bool = True) -> str:

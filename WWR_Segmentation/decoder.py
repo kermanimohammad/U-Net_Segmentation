@@ -140,7 +140,7 @@ def build_decoder(
         name: Layer name prefix.
 
     Returns:
-        Decoder output feature map at 1/4 input resolution (128×128 for 512 input).
+        Decoder output feature map at H/2 × W/2 (256×256 for 512 input).
     """
     x = bridge
     num_stages = len(decoder_filters)

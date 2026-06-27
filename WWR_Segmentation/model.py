@@ -105,8 +105,13 @@ def build_segmentation_model(config: Config) -> keras.Model:
         name="decoder",
     )
 
-    # Final upsampling to full resolution (decoder ends at 128×128 for 512 input)
-    x = layers.UpSampling2D(4, interpolation="bilinear", name="final_upsample")(decoded)
+    # Resize to exact input resolution (decoder ends at H/2 for EfficientNetV2-S + 4 stages)
+    x = layers.Resizing(
+        config.image_size[0],
+        config.image_size[1],
+        interpolation="bilinear",
+        name="final_resize",
+    )(decoded)
 
     # Segmentation head
     x = layers.Conv2D(
