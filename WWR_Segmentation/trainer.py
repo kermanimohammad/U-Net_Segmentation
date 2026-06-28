@@ -69,10 +69,7 @@ def train(config: Config, run_name: str = "training") -> Tuple[keras.Model, kera
 
     if resume_path is not None:
         logger.info("Fine-tuning from checkpoint: %s", resume_path)
-        model = keras.models.load_model(
-            str(resume_path),
-            custom_objects={"CombinedSegmentationLoss": CombinedSegmentationLoss},
-        )
+        model = keras.models.load_model(str(resume_path), compile=False)
     else:
         logger.info("Building EfficientNetV2-S segmentation model...")
         model = build_segmentation_model(config)
@@ -108,10 +105,7 @@ def load_and_compile_model(
 
     if model_path and tf.io.gfile.exists(path):
         logger.info("Loading model from %s", path)
-        model = keras.models.load_model(
-            path,
-            custom_objects={"CombinedSegmentationLoss": CombinedSegmentationLoss},
-        )
+        model = keras.models.load_model(path, compile=False)
     else:
         model = build_segmentation_model(config)
 
