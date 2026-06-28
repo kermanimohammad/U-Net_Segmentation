@@ -10,7 +10,6 @@ from tensorflow import keras
 from WWR_Segmentation.config import Config
 
 
-@keras.saving.register_keras_serializable(package="WWR_Segmentation")
 class WarmupCosineDecay(keras.optimizers.schedules.LearningRateSchedule):
     """Linear warmup followed by cosine annealing to *min_lr*."""
 
