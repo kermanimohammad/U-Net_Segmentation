@@ -57,8 +57,26 @@ def train(config: Config, run_name: str = "training") -> Tuple[keras.Model, kera
     steps_per_epoch = max(dataset_info["train"] // config.batch_size, 1)
     validation_steps = max(dataset_info["val"] // config.batch_size, 1)
 
-    logger.info("Building EfficientNetV2-S segmentation model...")
-    model = build_segmentation_model(config)
+    resume_path = None
+    if config.resume_from_best_model:
+        resume_path = config.resume_checkpoint_path
+        if not tf.io.gfile.exists(str(resume_path)):
+            logger.warning(
+                "Resume checkpoint not found at %s — training from scratch.",
+                resume_path,
+            )
+            resume_path = None
+
+    if resume_path is not None:
+        logger.info("Fine-tuning from checkpoint: %s", resume_path)
+        model = keras.models.load_model(
+            str(resume_path),
+            custom_objects={"CombinedSegmentationLoss": CombinedSegmentationLoss},
+        )
+    else:
+        logger.info("Building EfficientNetV2-S segmentation model...")
+        model = build_segmentation_model(config)
+
     model = compile_model(model, config, steps_per_epoch)
 
     model.summary(print_fn=logger.info)

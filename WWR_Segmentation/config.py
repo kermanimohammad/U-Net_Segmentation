@@ -98,6 +98,16 @@ class Config:
     boundary_weight: float = 0.2
     focal_gamma: float = 2.0
     focal_alpha: float = 0.25
+    boundary_theta: float = 3.0
+
+    # Per-class emphasis (Roof, Window, Wall, Other) — boosts rare / hard classes
+    use_class_weights: bool = False
+    class_weights: Tuple[float, ...] = (1.0, 3.5, 2.5, 0.5)
+    focal_class_alpha: Tuple[float, ...] = (0.15, 0.40, 0.35, 0.10)
+
+    # Fine-tune from a previous best checkpoint (run 2)
+    resume_from_best_model: bool = False
+    resume_model_path: Optional[Path] = None
 
     # ── Optimizer ────────────────────────────────────────────────────────────
     learning_rate: float = 1e-4
@@ -239,6 +249,39 @@ class Config:
         }
         defaults.update(overrides)
         return cls(**defaults)
+
+    def apply_refinement_preset(self) -> None:
+        """
+        Run-2 preset: class-weighted loss, stronger focal/boundary, fine-tune from run 1.
+
+        Call after ``setup_colab()`` when ``best_model.keras`` from run 1 exists on Drive.
+        Saves the improved model as ``best_model_v2.keras``.
+        """
+        self.use_class_weights = True
+        self.dice_weight = 0.35
+        self.focal_weight = 0.45
+        self.boundary_weight = 0.20
+        self.focal_gamma = 2.5
+        self.boundary_theta = 5.0
+        self.class_weights = (1.0, 3.5, 2.5, 0.5)
+        self.focal_class_alpha = (0.15, 0.40, 0.35, 0.10)
+        self.learning_rate = 5e-5
+        self.warmup_epochs = 2
+        self.total_epochs = 60
+        self.early_stopping_patience = 12
+        self.augment_probability = 0.80
+        self.dropout_rate = 0.35
+        self.weight_decay = 2e-5
+        self.resume_from_best_model = True
+        self.best_model_filename = "best_model_v2.keras"
+        self._create_directories()
+
+    @property
+    def resume_checkpoint_path(self) -> Path:
+        """Checkpoint to load when ``resume_from_best_model`` is True."""
+        if self.resume_model_path is not None:
+            return Path(self.resume_model_path)
+        return self.models_dir / "best_model.keras"
 
     @property
     def mask_lut(self) -> List[int]:
