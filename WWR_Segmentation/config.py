@@ -276,6 +276,33 @@ class Config:
         self.best_model_filename = "best_model_v2.keras"
         self._create_directories()
 
+    def apply_refinement_v3_preset(self) -> None:
+        """
+        Run-3 preset: mild class weights, fine-tune from run 1 best model.
+
+        Softer than run 2 — targets Window/Wall without hurting Roof/Other as much.
+        Saves as ``best_model_v3.keras``.
+        """
+        self.use_class_weights = True
+        self.dice_weight = 0.40
+        self.focal_weight = 0.40
+        self.boundary_weight = 0.20
+        self.focal_gamma = 2.0
+        self.boundary_theta = 4.0
+        self.class_weights = (1.0, 2.0, 1.5, 0.7)
+        self.focal_class_alpha = (0.20, 0.30, 0.25, 0.15)
+        self.learning_rate = 3e-5
+        self.warmup_epochs = 2
+        self.total_epochs = 40
+        self.early_stopping_patience = 8
+        self.augment_probability = 0.75
+        self.dropout_rate = 0.32
+        self.weight_decay = 1.5e-5
+        self.resume_from_best_model = True
+        self.resume_model_path = None  # loads best_model.keras (run 1)
+        self.best_model_filename = "best_model_v3.keras"
+        self._create_directories()
+
     @property
     def resume_checkpoint_path(self) -> Path:
         """Checkpoint to load when ``resume_from_best_model`` is True."""
