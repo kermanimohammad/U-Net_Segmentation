@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 
 cells = [
     {
@@ -15,7 +15,7 @@ cells = [
             "\n",
             f"**Notebook version:** `{VERSION}` — bump this string on every GitHub push.\n",
             "\n",
-            "Improved facade segmentation. **v1.4.0:** freeze encoder BatchNorm during fine-tune.\n",
+            "Improved facade segmentation. **v1.5.0:** AdamW exponential moving average (EMA).\n",
             "\n",
             "**Drive layout** (same as `WWR_Seg_Model.ipynb`):\n",
             "\n",
@@ -521,11 +521,17 @@ cells = [
         "cell_type": "code",
         "metadata": {},
         "source": [
+            "def make_optimizer(lr):\n",
+            "    kwargs = dict(learning_rate=lr, weight_decay=1e-5, clipnorm=1.0)\n",
+            "    try:\n",
+            "        return tf.keras.optimizers.AdamW(**kwargs, use_ema=True, ema_momentum=0.999)\n",
+            "    except TypeError:\n",
+            "        return tf.keras.optimizers.AdamW(**kwargs)\n",
+            "\n",
+            "\n",
             "def compile_model(lr):\n",
             "    model.compile(\n",
-            "        optimizer=tf.keras.optimizers.AdamW(\n",
-            "            learning_rate=lr, weight_decay=1e-5, clipnorm=1.0,\n",
-            "        ),\n",
+            "        optimizer=make_optimizer(lr),\n",
             "        loss=combined_loss,\n",
             "        metrics=[\n",
             "            tf.keras.metrics.SparseCategoricalAccuracy(name='accuracy'),\n",
@@ -602,9 +608,7 @@ cells = [
             "    alpha=0.01,\n",
             ")\n",
             "model.compile(\n",
-            "    optimizer=tf.keras.optimizers.AdamW(\n",
-            "        learning_rate=cosine, weight_decay=1e-5, clipnorm=1.0,\n",
-            "    ),\n",
+            "    optimizer=make_optimizer(cosine),\n",
             "    loss=combined_loss,\n",
             "    metrics=[\n",
             "        tf.keras.metrics.SparseCategoricalAccuracy(name='accuracy'),\n",
