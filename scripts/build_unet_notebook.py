@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 
 cells = [
     {
@@ -15,7 +15,7 @@ cells = [
             "\n",
             f"**Notebook version:** `{VERSION}` — bump this string on every GitHub push.\n",
             "\n",
-            "Improved facade segmentation. **v1.2.0:** ASPP bottleneck + 1×1 skip projection.\n",
+            "Improved facade segmentation. **v1.3.0:** boundary-aware loss for window/wall edges.\n",
             "\n",
             "**Drive layout** (same as `WWR_Seg_Model.ipynb`):\n",
             "\n",
@@ -416,8 +416,22 @@ cells = [
             "    return tf.reduce_mean(tf.reduce_sum(weight * ce, axis=-1))\n",
             "\n",
             "\n",
+            "def boundary_loss(y_true, y_pred):\n",
+            "    y_true_oh = tf.cast(tf.one_hot(tf.cast(y_true, tf.int32), OUTPUT_CHANNELS), tf.float32)\n",
+            "    y_pred = tf.cast(y_pred, tf.float32)\n",
+            "    sobel = tf.image.sobel_edges(y_true_oh)\n",
+            "    edges = tf.sqrt(tf.reduce_sum(tf.square(sobel), axis=-1) + 1e-6)\n",
+            "    edges = tf.clip_by_value(edges, 0.0, 1.0)\n",
+            "    ce = -y_true_oh * tf.math.log(tf.clip_by_value(y_pred, 1e-7, 1.0))\n",
+            "    return tf.reduce_mean(tf.reduce_sum(ce * (1.0 + 3.0 * edges), axis=-1))\n",
+            "\n",
+            "\n",
             "def combined_loss(y_true, y_pred):\n",
-            "    return 0.55 * weighted_dice_loss(y_true, y_pred) + 0.45 * focal_loss(y_true, y_pred)\n",
+            "    return (\n",
+            "        0.50 * weighted_dice_loss(y_true, y_pred)\n",
+            "        + 0.35 * focal_loss(y_true, y_pred)\n",
+            "        + 0.15 * boundary_loss(y_true, y_pred)\n",
+            "    )\n",
             "\n",
             "\n",
             "class MeanIoUFromLogits(MeanIoU):\n",
