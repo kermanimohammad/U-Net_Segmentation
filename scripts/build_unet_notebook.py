@@ -4,13 +4,16 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+VERSION = "1.1.0"
 
 cells = [
     {
         "cell_type": "markdown",
         "metadata": {},
         "source": [
-            "# U-Net + MobileNetV2 — Google Colab (A100, 512×512)\n",
+            f"# U-Net + MobileNetV2 — v{VERSION} (A100, 512×512)\n",
+            "\n",
+            f"**Notebook version:** `{VERSION}` — bump this string on every GitHub push.\n",
             "\n",
             "Improved facade segmentation (RGB, MobileNet preprocessing, stronger decoder, two-stage training).\n",
             "\n",
@@ -27,6 +30,16 @@ cells = [
             "1. **Runtime → A100 GPU**\n",
             "2. Run all cells in order\n",
         ],
+    },
+    {
+        "cell_type": "code",
+        "metadata": {},
+        "source": [
+            f"VERSION = '{VERSION}'\n",
+            "print('U-Net + MobileNetV2  |  VERSION', VERSION)\n",
+        ],
+        "outputs": [],
+        "execution_count": None,
     },
     {
         "cell_type": "code",
@@ -61,6 +74,7 @@ cells = [
             "MODELS_DIR.mkdir(parents=True, exist_ok=True)\n",
             "RESULTS_DIR.mkdir(parents=True, exist_ok=True)\n",
             "\n",
+            "print('Notebook VERSION:', VERSION)\n",
             "print('Drive base :', DRIVE_BASE)\n",
             "print('Data zip   :', DATA_ZIP, '→', DATA_ZIP.exists())\n",
             "print('Test zip   :', TEST_ZIP, '→', TEST_ZIP.exists())\n",
