@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "1.7.0"
+VERSION = "1.8.0"
 
 cells = [
     {
@@ -15,7 +15,7 @@ cells = [
             "\n",
             f"**Notebook version:** `{VERSION}` — bump this string on every GitHub push.\n",
             "\n",
-            "Improved facade segmentation. **v1.7.0:** test-time augmentation (horizontal flip).\n",
+            "Improved facade segmentation. **v1.8.0:** disable mixed-precision/XLA (Keras 3 ReluGrad crash).\n",
             "\n",
             "**Drive layout** (same as `WWR_Seg_Model.ipynb`):\n",
             "\n",
@@ -220,7 +220,8 @@ cells = [
             ")\n",
             "from tensorflow.keras.metrics import MeanIoU\n",
             "\n",
-            "tf.keras.mixed_precision.set_global_policy('mixed_float16')\n",
+            "tf.keras.mixed_precision.set_global_policy('float32')\n",
+            "tf.config.optimizer.set_jit(False)\n",
             "\n",
             "OUTPUT_CHANNELS = 4\n",
             "SIZE_X = 512\n",
@@ -569,6 +570,7 @@ cells = [
             "        optimizer=make_optimizer(lr),\n",
             "        loss=combined_loss,\n",
             "        metrics=train_metrics(),\n",
+            "        jit_compile=False,\n",
             "    )\n",
             "\n",
             "\n",
@@ -643,6 +645,7 @@ cells = [
             "    optimizer=make_optimizer(cosine),\n",
             "    loss=combined_loss,\n",
             "    metrics=train_metrics(),\n",
+            "    jit_compile=False,\n",
             ")\n",
             "\n",
             "history2 = model.fit(\n",
