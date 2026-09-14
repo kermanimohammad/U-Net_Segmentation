@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 
 cells = [
     {
@@ -15,7 +15,7 @@ cells = [
             "\n",
             f"**Notebook version:** `{VERSION}` — bump this string on every GitHub push.\n",
             "\n",
-            "Improved facade segmentation. **v1.3.0:** boundary-aware loss for window/wall edges.\n",
+            "Improved facade segmentation. **v1.4.0:** freeze encoder BatchNorm during fine-tune.\n",
             "\n",
             "**Drive layout** (same as `WWR_Seg_Model.ipynb`):\n",
             "\n",
@@ -585,13 +585,16 @@ cells = [
         "cell_type": "code",
         "metadata": {},
         "source": [
-            "print('Stage 2: fine-tune encoder from layer', FINE_TUNE_AT)\n",
+            "print('Stage 2: fine-tune encoder from layer', FINE_TUNE_AT, '(BatchNorm stays frozen)')\n",
             "if checkpoint_path.exists():\n",
             "    model.load_weights(str(checkpoint_path))\n",
             "    print('Loaded best Stage-1 weights')\n",
             "down_stack.trainable = True\n",
             "for i, layer in enumerate(down_stack.layers):\n",
-            "    layer.trainable = i >= FINE_TUNE_AT\n",
+            "    if isinstance(layer, BatchNormalization):\n",
+            "        layer.trainable = False\n",
+            "    else:\n",
+            "        layer.trainable = i >= FINE_TUNE_AT\n",
             "\n",
             "cosine = tf.keras.optimizers.schedules.CosineDecay(\n",
             "    initial_learning_rate=3e-5,\n",
