@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 
 cells = [
     {
@@ -15,7 +15,7 @@ cells = [
             "\n",
             f"**Notebook version:** `{VERSION}` — bump this string on every GitHub push.\n",
             "\n",
-            "Improved facade segmentation. **v1.6.0:** Window/Wall IoU metrics; fine-tune from layer 80.\n",
+            "Improved facade segmentation. **v1.7.0:** test-time augmentation (horizontal flip).\n",
             "\n",
             "**Drive layout** (same as `WWR_Seg_Model.ipynb`):\n",
             "\n",
@@ -714,11 +714,16 @@ cells = [
             "    return np.array(xs, dtype=np.float32), np.array(ys, dtype=np.int32), split_pairs\n",
             "\n",
             "\n",
-            "def predict_masks(images: np.ndarray, batch_size=8) -> np.ndarray:\n",
+            "def predict_masks(images: np.ndarray, batch_size=8, tta=True) -> np.ndarray:\n",
             "    preds = []\n",
             "    for i in range(0, len(images), batch_size):\n",
-            "        batch = mobilenet_preprocess(images[i:i + batch_size] * 255.0)\n",
+            "        raw = images[i:i + batch_size]\n",
+            "        batch = mobilenet_preprocess(raw * 255.0)\n",
             "        probs = model.predict(batch, verbose=0)\n",
+            "        if tta:\n",
+            "            flipped = mobilenet_preprocess(raw[:, :, ::-1, :] * 255.0)\n",
+            "            probs_f = model.predict(flipped, verbose=0)[:, :, ::-1, :]\n",
+            "            probs = 0.5 * (probs + probs_f)\n",
             "        preds.append(np.argmax(probs, axis=-1).astype(np.int32))\n",
             "    return np.concatenate(preds, axis=0)\n",
             "\n",
@@ -762,7 +767,8 @@ cells = [
             "    X_eval, y_eval = X_val, y_val\n",
             "    print('WARNING: no test masks found — Table uses the held-out validation split, not an independent test set.')\n",
             "\n",
-            "y_hat = predict_masks(X_eval)\n",
+            "y_hat = predict_masks(X_eval, tta=True)\n",
+            "print('Inference: test-time augmentation (horizontal flip) enabled')\n",
             "cm = confusion_matrix(y_eval, y_hat)\n",
             "metrics_df = classwise_table(cm)\n",
             "metrics_df_fmt = metrics_df.copy()\n",
